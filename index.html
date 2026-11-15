@@ -85,6 +85,8 @@ main{position:relative;z-index:2;flex:1;min-height:0;display:flex;align-items:ce
 .up{grid-column:2}.lf{grid-column:1;grid-row:2}.dn{grid-column:2;grid-row:2}.rt{grid-column:3;grid-row:2}
 @media (hover:hover) and (pointer:fine){.pad{display:none}}
 /* coins, daily reward, skin shop */
+#bShare{width:100%;margin:0 0 14px}
+.ov .opt.daily-btn{border-color:var(--accent)}
 .ov .daily{margin:-6px 0 14px;color:var(--accent);font-weight:700}
 .shop{margin:0 0 14px;text-align:left}
 .shopHead{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 8px;font:700 16px var(--font-display)}
@@ -121,7 +123,9 @@ main{position:relative;z-index:2;flex:1;min-height:0;display:flex;align-items:ce
     <p id="ovS">Pyyhkäise tai käytä nuolia ja WASD-näppäimiä. Salama 10 pisteen välein, kehitys 15 pisteen välein. Kerää värilliset pallot saadaksesi voimia.</p>
     <p class="daily" id="daily" hidden></p>
     <div class="stats" id="stats" hidden></div>
+    <button class="opt" id="bShare" type="button" hidden>📤 Jaa tulos</button>
     <div class="seg" id="seg">
+      <button class="opt wide daily-btn" id="bDaily" type="button">📅 Päivän haaste</button>
       <button class="opt" data-d="0" aria-pressed="false" type="button">Helppo</button>
       <button class="opt" data-d="1" aria-pressed="true" type="button">Normaali</button>
       <button class="opt" data-d="2" aria-pressed="false" type="button">Vaikea</button>
@@ -361,7 +365,7 @@ function spawnBonus(){
     free.push({x,y});
   }
   if(!free.length)return;
-  const c=free[Math.floor(Math.random()*free.length)];
+  const c=free[Math.floor(R.item()*free.length)];
   bonus={x:c.x,y:c.y,life:9,max:9};
   bonus3d.position.set(W(c.x),0,W(c.y));bonus3d.visible=true;bonusT=0;sfx('spawn');
 }
@@ -372,8 +376,8 @@ function spawnOrb(){
     free.push({x,y});
   }
   if(!free.length)return;
-  const c=free[Math.floor(Math.random()*free.length)];
-  const types=['slow','shield','magnet'],type=types[Math.floor(Math.random()*3)],col=ORB_COL[type];
+  const c=free[Math.floor(R.item()*free.length)];
+  const types=['slow','shield','magnet'],type=types[Math.floor(R.item()*3)],col=ORB_COL[type];
   orb={x:c.x,y:c.y,type,life:10,max:10};
   [orbMat.color,orbMat.emissive,orbRingMat.color,orbLight.color,pMatOrb.color].forEach(k=>k.set(col));
   slowGem.visible=type==='slow';shieldGem.visible=type==='shield';magnetGem.visible=type==='magnet';
@@ -520,7 +524,7 @@ const DIRS4=[[1,0],[-1,0],[0,1],[0,-1]];
 const stats={apples:0,bonus:0,rocks:0,rivals:0,time:0};
 function fillStats(){
   const el=$('stats'),mn=Math.floor(stats.time/60),sc=Math.floor(stats.time%60);
-  const rows=[['Laji',TIER_NAMES[tier]],['Vaikeustaso',D().n],['Omenat',stats.apples],['Bonukset',stats.bonus],['Tuhotut kivet',stats.rocks],['Voitetut kilpailijat',stats.rivals],['Pituus',path.length],['Aika',mn+':'+(sc<10?'0':'')+sc]];
+  const rows=[['Laji',TIER_NAMES[tier]],['Vaikeustaso',lastRun&&lastRun.daily?'Haaste #'+lastRun.num:D().n],['Omenat',stats.apples],['Bonukset',stats.bonus],['Tuhotut kivet',stats.rocks],['Voitetut kilpailijat',stats.rivals],['Pituus',path.length],['Aika',mn+':'+(sc<10?'0':'')+sc]];
   el.innerHTML=rows.map(q=>'<div><span>'+q[0]+'</span><b>'+q[1]+'</b></div>').join('');
 }
 function flood(sx,sy,g){
@@ -563,7 +567,7 @@ function rivalDecide(){
   }
   let pick=roomy;
   if(found>=0&&space[found]>=riv.path.length+3)pick=found;
-  if(Math.random()<D().rerr)pick=Math.floor(Math.random()*opts.length);
+  if(R.riv()<D().rerr)pick=Math.floor(R.riv()*opts.length);
   return{x:opts[pick][0],y:opts[pick][1]};
 }
 function rivalStep(){
@@ -593,8 +597,8 @@ function killRival(byPlayer,credit){
 function spawnRival(){
   const free=(x,y)=>x>=0&&y>=0&&x<N&&y<N&&!path.some(c=>c.x===x&&c.y===y)&&!rocks.some(c=>c.x===x&&c.y===y)&&!(food.x===x&&food.y===y)&&!(bonus&&bonus.x===x&&bonus.y===y)&&!(orb&&orb.x===x&&orb.y===y);
   for(let tries=0;tries<80;tries++){
-    const x=2+Math.floor(Math.random()*(N-4)),y=2+Math.floor(Math.random()*(N-4));
-    const d=DIRS4[Math.floor(Math.random()*4)];
+    const x=2+Math.floor(R.riv()*(N-4)),y=2+Math.floor(R.riv()*(N-4));
+    const d=DIRS4[Math.floor(R.riv()*4)];
     if(Math.abs(x-path[0].x)+Math.abs(y-path[0].y)<7)continue;
     const cells=[0,1,2].map(i=>({x:x-d[0]*i,y:y-d[1]*i}));
     const ahead=[1,2].map(i=>({x:x+d[0]*i,y:y+d[1]*i}));
@@ -615,6 +619,14 @@ function awardPoints(n){
   if(tier>=2&&bites<3&&Math.floor(score/5)>Math.floor(before/5)){bites++;updateChips();}
 }
 
+/* ---------- random streams (seeded in the daily challenge so everyone gets the same board) ---------- */
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const R={food:Math.random,rock:Math.random,item:Math.random,riv:Math.random};
+function seedRandom(seed){
+  if(seed==null){R.food=R.rock=R.item=R.riv=Math.random;return;}
+  R.food=mulberry(seed*4+1);R.rock=mulberry(seed*4+2);R.item=mulberry(seed*4+3);R.riv=mulberry(seed*4+4);
+}
+
 /* ---------- game state ---------- */
 let path,prev,dir,queue,food,score=0,best=0,state='idle',acc=0,tick=200,overAt=0;
 let spawnT=1,pulse=0,dead=false,headAng=0,shake=0;
@@ -625,7 +637,7 @@ function addRock(){
   if(rocks.length>=D().rmax)return false;
   const h=path[0];
   for(let tries=0;tries<80;tries++){
-    const x=1+Math.floor(Math.random()*(N-2)),y=1+Math.floor(Math.random()*(N-2));
+    const x=1+Math.floor(R.rock()*(N-2)),y=1+Math.floor(R.rock()*(N-2));
     if(Math.abs(x-h.x)+Math.abs(y-h.y)<=4)continue;
     if(food&&food.x===x&&food.y===y)continue;
     if(bonus&&bonus.x===x&&bonus.y===y)continue;
@@ -674,7 +686,9 @@ function spawnFood(){
     if(!path.some(p=>p.x===x&&p.y===y)&&!rocks.some(q=>q.x===x&&q.y===y)&&!(bonus&&bonus.x===x&&bonus.y===y)&&!(orb&&orb.x===x&&orb.y===y)&&!riv.path.some(q=>q.x===x&&q.y===y))free.push({x,y});
   }
   if(!free.length){finish(true);return;}
-  food=free[Math.floor(Math.random()*free.length)];
+  food=null;
+  for(let i=0;i<64&&!food;i++){const x=Math.floor(R.food()*N),y=Math.floor(R.food()*N);if(free.some(c=>c.x===x&&c.y===y))food={x,y};}
+  if(!food)food=free[Math.floor(R.food()*free.length)];
   food3d.position.set(W(food.x),0,W(food.y));
   spawnT=0;
 }
@@ -722,8 +736,8 @@ function step(){
     else if(obsOn&&Math.floor(score/D().rstep)>Math.floor(before/D().rstep))addRock();
     if(eatF){
       spawnFood();
-      if(!bonus&&score>=2&&Math.random()<.3)spawnBonus();
-      if(!orb&&score>=4&&Math.random()<.18)spawnOrb();
+      if(!bonus&&score>=2&&R.item()<.3)spawnBonus();
+      if(!orb&&score>=4&&R.item()<.18)spawnOrb();
     }
   }
   if(eatO){
@@ -739,15 +753,28 @@ function finish(win){
   if(!win){shake=reduce?0:.6;burst(W(path[0].x),W(path[0].y),pMatDead,22);sfx('death');}
   else sfx('win');
   if(score>best){if(score>0&&!win)sfx('record');best=score;$('hi').textContent=best;try{localStorage.setItem(bestKey(),best);}catch(e){}}
+  lastRun={daily:dailyRun,num:challengeNum(),score,tier,rivals:stats.rivals,diff:D().n};
+  if(dailyRun){
+    store.set('snake3d-challenge',{day:dayKey(new Date()),num:lastRun.num,score,tier,rivals:stats.rivals});
+    diff=savedOpts.diff;rivalOn=savedOpts.rivalOn;obsOn=savedOpts.obsOn;dailyRun=false;
+  }
   const earned=score+stats.rivals*5+(win?50:0);   // 1 coin per point, 5 per beaten rival, 50 for a full board
   if(earned>0)addCoins(earned);
-  setTimeout(()=>{if(state==='over')show(win?'Täydellistä!':'Peli ohi',
+  if(lastRun.daily&&diff!==1){try{best=+localStorage.getItem(bestKey())||0;}catch(e){best=0;}$('hi').textContent=best;}
+  setTimeout(()=>{if(state==='over')show(lastRun.daily?'Haaste #'+lastRun.num+' valmis':win?'Täydellistä!':'Peli ohi',
     'Pisteet: '+score+(score&&score>=best?' · uusi ennätys!':'')+(earned>0?' · +'+earned+' 🪙':''),'Uudestaan');},win?200:550);
 }
 
 /* ---------- ui ---------- */
-function show(t,s,b){$('ovT').textContent=t;$('ovS').textContent=s;$('ovB').textContent=b;$('seg').hidden=state==='pause';if(state==='pause')toggleShop(false);if(state==='over')fillStats();$('stats').hidden=state!=='over';ov.hidden=false;}
-function start(){
+function show(t,s,b){$('bShare').hidden=state!=='over';refreshDaily();$('ovT').textContent=t;$('ovS').textContent=s;$('ovB').textContent=b;$('seg').hidden=state==='pause';if(state==='pause')toggleShop(false);if(state==='over')fillStats();$('stats').hidden=state!=='over';ov.hidden=false;}
+function start(isDaily){
+  dailyRun=!!isDaily;
+  if(dailyRun){
+    savedOpts={diff,rivalOn,obsOn};diff=1;rivalOn=true;obsOn=true;
+    best=+store.get(bestKey(),0)||0;$('hi').textContent=best;
+    seedRandom(challengeNum()+1000);
+    store.set('snake3d-challenge',{day:dayKey(new Date()),num:challengeNum(),score:0,tier:0,rivals:0});  // the attempt counts from the start
+  }else seedRandom(null);
   reset();state='run';ov.hidden=true;toggleShop(false);$('daily').hidden=true;audio();sfx('start');
 }
 function pause(){if(state==='run'){state='pause';sfx('pause');show('Tauko','Peli odottaa.','Jatka');}}
@@ -1031,6 +1058,36 @@ function claimDaily(){
   d.hidden=false;
 }
 
+let dailyRun=false,savedOpts=null,lastRun=null;
+const challengeNum=()=>{const d=new Date();return Math.floor((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())-Date.UTC(2026,10,15))/864e5)+1;};
+function todayChallenge(){const c=store.get('snake3d-challenge',null);return c&&c.day===dayKey(new Date())?c:null;}
+function refreshDaily(){
+  const c=todayChallenge(),b=$('bDaily');
+  b.textContent=c?'📅 Haaste #'+c.num+': '+c.score+' p ✓ · Jaa':'📅 Päivän haaste #'+challengeNum()+' · 1 yritys';
+}
+const TIER_EMO=['🐍','🦎','🐊','🐉'];
+function shareText(r){
+  const url=location.href.split(/[?#]/)[0];
+  return '🐍 Matopeli 3D · '+(r.daily?'Päivän haaste #'+r.num:r.diff)+'\n'+
+    '🏆 '+r.score+' pistettä · '+TIER_EMO[r.tier]+' '+TIER_NAMES[r.tier]+
+    (r.rivals?'\n⚔️ '+r.rivals+(r.rivals===1?' kilpailija':' kilpailijaa')+' voitettu':'')+
+    '\n'+(r.daily?'Pystytkö parempaan? 👇':'Voitatko minut? 👇')+'\n'+url;
+}
+function share(r){
+  const text=shareText(r);
+  if(navigator.share){navigator.share({text}).catch(()=>{});return;}
+  if(navigator.clipboard)navigator.clipboard.writeText(text).then(()=>toast('Tulos kopioitu – liitä se viestiin!'),()=>toast('Kopiointi ei onnistunut'));
+  else toast('Jakaminen ei ole tuettu tällä laitteella');
+}
+$('bShare').addEventListener('click',e=>{e.stopPropagation();if(lastRun)share(lastRun);});
+$('bDaily').addEventListener('click',e=>{
+  e.stopPropagation();
+  const c=todayChallenge();
+  if(c){share({daily:true,num:c.num,score:c.score,tier:c.tier,rivals:c.rivals});return;}
+  if(state==='over'&&performance.now()-overAt<450)return;
+  start(true);
+});
+
 /* ---------- themes ---------- */
 const THEMES=[
   {name:'Yö',bonus:0xffd54a,rivH:0xff7ab8,rivT:0xb04a9a,bg:0x0d1224,tA:'#1d2f5f',tB:'#172650',wall:0x2f4a8c,wallEm:0x16264f,slab:0x101a38,ground:0x0b1020,cap:0x7dffb4,head:0x7dffb4,tail:0x12a7b0,food:0xff5c4d,foodEm:0x7a1208,pFood:0xff8a70,rock:0x6b7aa8,sky:0xa9c0ff,gr:0x1b1236,
@@ -1067,13 +1124,14 @@ $('bTheme').addEventListener('click',()=>{
 });
 $('bObs').setAttribute('aria-pressed',String(obsOn));
 $('bObs').addEventListener('click',ev=>{
+  if(dailyRun){toast('Ei käytössä päivän haasteessa');return;}
   obsOn=!obsOn;ev.currentTarget.setAttribute('aria-pressed',String(obsOn));
   clearRocks();if(obsOn)seedRocks(D().seed);updateMeter();
   if(!food||rocks.some(q=>q.x===food.x&&q.y===food.y))spawnFood();
   try{localStorage.setItem('snake3d-obs',obsOn?'1':'0');}catch(e){}
 });
 applyTheme(themeIdx);
-refreshCoins();claimDaily();
+refreshCoins();claimDaily();refreshDaily();
 
 /* ---------- main loop ---------- */
 const col=new THREE.Color(),white=new THREE.Color(0xffffff);
