@@ -84,6 +84,18 @@ main{position:relative;z-index:2;flex:1;min-height:0;display:flex;align-items:ce
 }
 .up{grid-column:2}.lf{grid-column:1;grid-row:2}.dn{grid-column:2;grid-row:2}.rt{grid-column:3;grid-row:2}
 @media (hover:hover) and (pointer:fine){.pad{display:none}}
+/* coins, daily reward, skin shop */
+.ov .daily{margin:-6px 0 14px;color:var(--accent);font-weight:700}
+.shop{margin:0 0 14px;text-align:left}
+.shopHead{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 8px;font:700 16px var(--font-display)}
+.shopHead span{color:var(--accent);font-variant-numeric:tabular-nums}
+.skins{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ov .skin{display:flex;align-items:center;gap:8px;min-height:50px;padding:6px 8px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--ink);font:600 13px var(--font-body);text-align:left;cursor:pointer;min-width:0}
+.ov .skin[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.ov .skin.locked{opacity:.55}
+.skin .sw{flex:none;width:26px;height:26px;border-radius:50%;border:1px solid var(--line)}
+.skin span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.skin small{display:block;color:var(--muted);font-size:11px;font-weight:500}
 </style>
 
 <canvas id="stage"></canvas>
@@ -107,12 +119,18 @@ main{position:relative;z-index:2;flex:1;min-height:0;display:flex;align-items:ce
   <div class="ov" id="ov">
     <h1 id="ovT">Matopeli 3D</h1>
     <p id="ovS">Pyyhkäise tai käytä nuolia ja WASD-näppäimiä. Salama 10 pisteen välein, kehitys 15 pisteen välein. Kerää värilliset pallot saadaksesi voimia.</p>
+    <p class="daily" id="daily" hidden></p>
     <div class="stats" id="stats" hidden></div>
     <div class="seg" id="seg">
       <button class="opt" data-d="0" aria-pressed="false" type="button">Helppo</button>
       <button class="opt" data-d="1" aria-pressed="true" type="button">Normaali</button>
       <button class="opt" data-d="2" aria-pressed="false" type="button">Vaikea</button>
       <button class="opt wide" id="bRival" aria-pressed="true" type="button">Kilpailijamato</button>
+      <button class="opt wide" id="bShop" aria-expanded="false" type="button">Kauppa · 🪙 0</button>
+    </div>
+    <div class="shop" id="shop" hidden>
+      <div class="shopHead"><b>Ulkoasut</b><span id="shopCoins">🪙 0</span></div>
+      <div class="skins" id="skins"></div>
     </div>
     <button id="ovB" type="button">Pelaa</button>
   </div>
@@ -721,14 +739,16 @@ function finish(win){
   if(!win){shake=reduce?0:.6;burst(W(path[0].x),W(path[0].y),pMatDead,22);sfx('death');}
   else sfx('win');
   if(score>best){if(score>0&&!win)sfx('record');best=score;$('hi').textContent=best;try{localStorage.setItem(bestKey(),best);}catch(e){}}
+  const earned=score+stats.rivals*5+(win?50:0);   // 1 coin per point, 5 per beaten rival, 50 for a full board
+  if(earned>0)addCoins(earned);
   setTimeout(()=>{if(state==='over')show(win?'Täydellistä!':'Peli ohi',
-    'Pisteet: '+score+(score&&score>=best?' · uusi ennätys!':''),'Uudestaan');},win?200:550);
+    'Pisteet: '+score+(score&&score>=best?' · uusi ennätys!':'')+(earned>0?' · +'+earned+' 🪙':''),'Uudestaan');},win?200:550);
 }
 
 /* ---------- ui ---------- */
-function show(t,s,b){$('ovT').textContent=t;$('ovS').textContent=s;$('ovB').textContent=b;$('seg').hidden=state==='pause';if(state==='over')fillStats();$('stats').hidden=state!=='over';ov.hidden=false;}
+function show(t,s,b){$('ovT').textContent=t;$('ovS').textContent=s;$('ovB').textContent=b;$('seg').hidden=state==='pause';if(state==='pause')toggleShop(false);if(state==='over')fillStats();$('stats').hidden=state!=='over';ov.hidden=false;}
 function start(){
-  reset();state='run';ov.hidden=true;audio();sfx('start');
+  reset();state='run';ov.hidden=true;toggleShop(false);$('daily').hidden=true;audio();sfx('start');
 }
 function pause(){if(state==='run'){state='pause';sfx('pause');show('Tauko','Peli odottaa.','Jatka');}}
 function resume(){if(state==='pause'){state='run';ov.hidden=true;acc=0;sfx('resume');}}
@@ -936,6 +956,81 @@ function camDist(el){
 }
 new ResizeObserver(fit).observe(canvas);fit();
 
+/* ---------- coins, skins and daily reward ---------- */
+const SKINS=[
+  {n:'Teeman värit',p:0},
+  {n:'Kulta',p:50,head:0xffd54a,tail:0xb8860b},
+  {n:'Laava',p:100,head:0xffb347,tail:0xd7263d},
+  {n:'Jää',p:150,head:0xe6f9ff,tail:0x5aa9e6},
+  {n:'Myrkky',p:200,head:0xd4ff3a,tail:0x2e7d32},
+  {n:'Ametisti',p:300,head:0xe0a3ff,tail:0x6a1b9a},
+  {n:'Varjo',p:400,head:0x8a8aa3,tail:0x1c1c2a},
+  {n:'Sateenkaari',p:500,rainbow:true}
+];
+const store={
+  get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v);}catch(e){return d;}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+};
+let coins=Math.max(0,+store.get('snake3d-coins',0)||0);
+let owned=store.get('snake3d-owned',[0]);if(!Array.isArray(owned))owned=[0];if(!owned.includes(0))owned.push(0);
+let skinIdx=+store.get('snake3d-skin',0)||0;if(!SKINS[skinIdx]||!owned.includes(skinIdx))skinIdx=0;
+const hex=c=>'#'+c.toString(16).padStart(6,'0');
+function applySkin(){
+  const S=SKINS[skinIdx],T=THEMES[themeIdx];
+  HEAD_C.set(S.head!==undefined?S.head:T.head);TAIL_C.set(S.tail!==undefined?S.tail:T.tail);
+  pMatDead.color.copy(HEAD_C);
+}
+function refreshCoins(){
+  $('bShop').textContent=($('shop').hidden?'Kauppa':'Sulje kauppa')+' · 🪙 '+coins;
+  $('shopCoins').textContent='🪙 '+coins;
+}
+function addCoins(n){coins+=n;store.set('snake3d-coins',coins);refreshCoins();if(!$('shop').hidden)renderShop();}
+function renderShop(){
+  const T=THEMES[themeIdx];
+  $('skins').innerHTML=SKINS.map((S,i)=>{
+    const has=owned.includes(i),on=i===skinIdx;
+    const bg=S.rainbow?'conic-gradient(#ff5c4d,#ffd54a,#7dffb4,#4fd8f0,#c792ff,#ff5c4d)'
+      :'linear-gradient(135deg,'+hex(S.head!==undefined?S.head:T.head)+','+hex(S.tail!==undefined?S.tail:T.tail)+')';
+    const sub=on?'Käytössä':has?'Valitse':'🪙 '+S.p;
+    return '<button class="skin'+(!has&&coins<S.p?' locked':'')+'" data-i="'+i+'" aria-pressed="'+on+'" type="button">'+
+      '<i class="sw" style="background:'+bg+'"></i><span>'+S.n+'<small>'+sub+'</small></span></button>';
+  }).join('');
+}
+function toggleShop(open){
+  const el=$('shop');if(open===undefined)open=el.hidden;
+  el.hidden=!open;$('bShop').setAttribute('aria-expanded',String(open));
+  if(open)renderShop();
+  refreshCoins();
+}
+function pickSkin(i){
+  const S=SKINS[i];if(!S)return;
+  if(!owned.includes(i)){
+    if(coins<S.p){toast('Tarvitset vielä '+(S.p-coins)+' 🪙');return;}
+    coins-=S.p;owned.push(i);store.set('snake3d-coins',coins);store.set('snake3d-owned',owned);
+    toast('Ostettu: '+S.n+'!');sfx('bonus');
+  }
+  skinIdx=i;store.set('snake3d-skin',i);applySkin();renderShop();refreshCoins();
+}
+$('bShop').addEventListener('click',e=>{e.stopPropagation();toggleShop();});
+$('shop').addEventListener('click',e=>{
+  e.stopPropagation();
+  const b=e.target.closest('.skin');if(b)pickSkin(+b.dataset.i);
+});
+const dayKey=d=>d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
+function claimDaily(){
+  const now=new Date(),today=dayKey(now),last=store.get('snake3d-daily-last',null);
+  if(last===today)return;
+  const y=new Date(now);y.setDate(y.getDate()-1);
+  const streak=last===dayKey(y)?(+store.get('snake3d-streak',0)||0)+1:1;
+  const reward=10+10*Math.min(streak,7);           // 20, 30 … up to 80 coins on day 7+
+  store.set('snake3d-daily-last',today);store.set('snake3d-streak',streak);
+  addCoins(reward);
+  const d=$('daily');
+  d.textContent='🎁 Päivän palkinto: +'+reward+' 🪙'+(streak>1?' · '+streak+' päivää putkeen!':'')+
+    (streak<7?' Palaa huomenna: +'+(10+10*Math.min(streak+1,7))+' 🪙':'');
+  d.hidden=false;
+}
+
 /* ---------- themes ---------- */
 const THEMES=[
   {name:'Yö',bonus:0xffd54a,rivH:0xff7ab8,rivT:0xb04a9a,bg:0x0d1224,tA:'#1d2f5f',tB:'#172650',wall:0x2f4a8c,wallEm:0x16264f,slab:0x101a38,ground:0x0b1020,cap:0x7dffb4,head:0x7dffb4,tail:0x12a7b0,food:0xff5c4d,foodEm:0x7a1208,pFood:0xff8a70,rock:0x6b7aa8,sky:0xa9c0ff,gr:0x1b1236,
@@ -955,9 +1050,9 @@ function applyTheme(i){
   scene.background.set(T.bg);scene.fog.color.set(T.bg);
   paintTiles(T.tA,T.tB);
   wallMat.color.set(T.wall);wallMat.emissive.set(T.wallEm);slabMat.color.set(T.slab);groundMat.color.set(T.ground);capMat.color.set(T.cap);
-  HEAD_C.set(T.head);TAIL_C.set(T.tail);
+  applySkin();
   appleMat.color.set(T.food);appleMat.emissive.set(T.foodEm);glow.color.set(T.food);leafMat.color.set(T.cap);
-  pMatFood.color.set(T.pFood);pMatDead.color.set(T.head);rockMat.color.set(T.rock);pMatRock.color.set(T.rock);rocks.forEach(q=>q.m.material.color.set(T.rock));
+  pMatFood.color.set(T.pFood);rockMat.color.set(T.rock);pMatRock.color.set(T.rock);rocks.forEach(q=>q.m.material.color.set(T.rock));
   hemi.color.set(T.sky);hemi.groundColor.set(T.gr);
   RIV_H.set(T.rivH);RIV_T.set(T.rivT);pMatRiv.color.set(T.rivH);
   bonusMat.color.set(T.bonus);bonusMat.emissive.set(T.bonus);ringMat.color.set(T.bonus);bonusLight.color.set(T.bonus);pMatBonus.color.set(T.bonus);
@@ -968,6 +1063,7 @@ function applyTheme(i){
 $('bTheme').addEventListener('click',()=>{
   applyTheme((themeIdx+1)%THEMES.length);
   try{localStorage.setItem('snake3d-theme',themeIdx);}catch(e){}
+  if(!$('shop').hidden)renderShop();
 });
 $('bObs').setAttribute('aria-pressed',String(obsOn));
 $('bObs').addEventListener('click',ev=>{
@@ -977,6 +1073,7 @@ $('bObs').addEventListener('click',ev=>{
   try{localStorage.setItem('snake3d-obs',obsOn?'1':'0');}catch(e){}
 });
 applyTheme(themeIdx);
+refreshCoins();claimDaily();
 
 /* ---------- main loop ---------- */
 const col=new THREE.Color(),white=new THREE.Color(0xffffff);
@@ -984,6 +1081,8 @@ let last=performance.now(),time=0;
 function frame(now){
   requestAnimationFrame(frame);
   let dt=(now-last)/1000;last=now;if(dt>.1)dt=.1;time+=dt;
+  const rainbow=!!SKINS[skinIdx].rainbow;
+  if(rainbow){HEAD_C.setHSL((time*.08)%1,.85,.6);TAIL_C.setHSL((time*.08+.85)%1,.85,.6);}
 
   const ct=tick*(slowT>0?1.8:1);
   if(state==='run')stats.time+=dt;
@@ -1009,7 +1108,7 @@ function frame(now){
       m.visible=true;m.scale.setScalar(s);m.position.set(p.x,.5*s,p.z);
       if(tier>=2&&j===1){const rm=ridge(k);rm.visible=true;rm.position.set(p.x,s+.1,p.z);rm.scale.setScalar(s);}
       else if(ridges[k])ridges[k].visible=false;
-      col.copy(HEAD_C).lerp(TAIL_C,f);if(TIER_MIX[tier])col.lerp(TIER_TINT[tier],TIER_MIX[tier]);if(k%4<2)col.multiplyScalar(.86);
+      if(rainbow)col.setHSL((time*.08+f*.85)%1,.85,.6);else col.copy(HEAD_C).lerp(TAIL_C,f);if(TIER_MIX[tier])col.lerp(TIER_TINT[tier],TIER_MIX[tier]);if(k%4<2)col.multiplyScalar(.86);
       if(dead)col.lerp(DEAD_C,.65);
       m.material.color.copy(col);k++;
     }
